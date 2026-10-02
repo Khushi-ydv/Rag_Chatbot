@@ -6,11 +6,18 @@ Ask things like:
 - "What is the leave carry-forward limit?"
 - "Can I work from home?"
 - "How many leaves do I have left, and what is the leave policy?"
+- 📎 Attach a screenshot of a leave request and ask "Is this leave request valid?"
 
 ## How it works
 
 ```
-User question
+User question (+ optional image)
+     │
+     ▼
+┌──────────┐
+│  vision  │  only if an image is attached: Groq vision model
+│          │  (qwen/qwen3.8-27b) extracts text, dates, numbers
+└──────────┘
      │
      ▼
 ┌──────────┐   tool call?   ┌───────────────────────────────┐
@@ -28,9 +35,10 @@ User question
 3. **Tools**:
    - `search_company_policies`: retrieves the 3 most relevant policy chunks.
    - `get_leave_balance`: returns the current employee's leave balance (demo data: 14 days).
-4. **Agent loop (LangGraph)**: the LLM (`openai/gpt-oss-120b` on Groq) decides which tools to call, reads the results, and loops until it can answer.
-5. **UI**: Streamlit shows the answer, the tools used, and the source documents.
-6. **Tracing (optional)**: every run can be traced in **LangSmith**.
+4. **Vision (optional)**: if the user attaches an image, a vision node uses `qwen/qwen3.8-27b` on Groq to extract its details as text. The agent then checks them against policy with the same tools.
+5. **Agent loop (LangGraph)**: the LLM (`openai/gpt-oss-120b` on Groq) decides which tools to call, reads the results, and loops until it can answer.
+6. **UI**: Streamlit shows the answer, the tools used, and the source documents.
+7. **Tracing (optional)**: every run can be traced in **LangSmith**.
 
 ## Tech stack
 
@@ -38,6 +46,7 @@ User question
 |---|---|
 | UI | Streamlit |
 | LLM | Groq (`openai/gpt-oss-120b`) |
+| Vision | Groq (`qwen/qwen3.8-27b`) |
 | Agent orchestration | LangGraph |
 | Embeddings | HuggingFace `all-MiniLM-L6-v2` (runs locally) |
 | Vector store | FAISS |

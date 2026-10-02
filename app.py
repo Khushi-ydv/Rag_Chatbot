@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
-from typing import TypedDict, Annotated
+import base64
+from typing import TypedDict, Annotated, Optional
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -227,6 +228,12 @@ llm = ChatGroq(
 
 llm_with_tools = llm.bind_tools(tools)
 
+# Vision model: reads uploaded images (gpt-oss only accepts text)
+vision_llm = ChatGroq(
+    model="qwen/qwen3.8-27b",
+    temperature=0
+)
+
 
 # ============================================================
 # 10. LANGGRAPH STATE
@@ -238,6 +245,52 @@ class State(TypedDict):
         list[BaseMessage],
         add_messages
     ]
+
+    # Uploaded image as a base64 data URL (None if no image)
+    image: Optional[str]
+
+
+# ============================================================
+# 10b. VISION NODE
+# ============================================================
+
+def vision_node(state: State):
+
+    image = state.get("image")
+
+    if not image:
+
+        return {}
+
+    response = vision_llm.invoke([
+        HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": (
+                        "Extract all relevant details from this image "
+                        "(text, dates, names, numbers, what it shows). "
+                        "Be factual and concise."
+                    )
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": image}
+                }
+            ]
+        )
+    ])
+
+    return {
+        "messages": [
+            HumanMessage(
+                content=(
+                    "Details extracted from the uploaded image:\n"
+                    + response.content
+                )
+            )
+        ]
+    }
 
 
 # ============================================================
@@ -266,6 +319,11 @@ Use this when the user asks about their personal
 remaining leave balance.
 
 You may use both tools if necessary.
+
+If the user uploaded an image, its extracted details are
+included in the conversation. Use them together with the
+tools, e.g. check a leave request in the image against
+the leave policy.
 
 Do not invent company policy information.
 
@@ -344,6 +402,11 @@ def should_continue(state: State):
 graph = StateGraph(State)
 
 graph.add_node(
+    "vision",
+    vision_node
+)
+
+graph.add_node(
     "agent",
     agent_node
 )
@@ -355,6 +418,11 @@ graph.add_node(
 
 graph.add_edge(
     START,
+    "vision"
+)
+
+graph.add_edge(
+    "vision",
     "agent"
 )
 
@@ -390,31 +458,68 @@ st.title(
 
 st.write(
     "Ask questions about company policies "
-    "or your personal leave balance."
+    "or your personal leave balance. "
+    "You can also attach an image (e.g. a leave request screenshot)."
 )
 
 st.caption(
-    "Groq + RAG + Tool Calling + LangGraph"
+    "Groq + RAG + Tool Calling + LangGraph + Vision"
 )
 
 
-question = st.chat_input(
-    "Ask something..."
+user_input = st.chat_input(
+    "Ask something or attach an image...",
+    accept_file=True,
+    file_type=["png", "jpg", "jpeg", "webp"]
 )
 
 
-if question:
+if user_input:
 
-    st.chat_message(
-        "user"
-    ).write(question)
+    question = user_input.text
+
+    uploaded_image = (
+        user_input.files[0]
+        if user_input.files
+        else None
+    )
+
+    image_url = None
+
+    if uploaded_image:
+
+        image_url = (
+            f"data:{uploaded_image.type};base64,"
+            + base64.b64encode(
+                uploaded_image.getvalue()
+            ).decode()
+        )
+
+        if not question:
+
+            question = (
+                "What does this image show, and how does "
+                "company policy apply to it?"
+            )
+
+    with st.chat_message("user"):
+
+        if uploaded_image:
+
+            st.image(
+                uploaded_image,
+                width=300
+            )
+
+        st.write(question)
 
     initial_state = {
         "messages": [
             HumanMessage(
                 content=question
             )
-        ]
+        ],
+        "image": image_url
     }
 
     with st.spinner(
@@ -426,7 +531,10 @@ if question:
             config={
                 "run_name": "rag-chatbot",
                 "tags": ["streamlit", "rag"],
-                "metadata": {"question": question},
+                "metadata": {
+                    "question": question,
+                    "has_image": bool(image_url)
+                },
             },
         )
 
