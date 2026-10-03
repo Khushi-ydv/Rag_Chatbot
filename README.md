@@ -1,4 +1,5 @@
 # Company Policy AI Agent (RAG Chatbot)
+Speaker's Linkedin : https://www.linkedin.com/in/khushiiiyadav/
 
 A Streamlit chatbot that answers employee questions about company policies and their leave balance. It combines **RAG** (retrieval-augmented generation) with **tool calling**, orchestrated by **LangGraph**, using a **Groq**-hosted LLM.
 
